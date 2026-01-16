@@ -10,3 +10,9 @@ variable "kms_key_alias" {}
 variable "tags" {
   type = map(string)
 }
+
+variable "subnet2_tag" {
+  description = "Second private subnet tag"
+  type        = string
+}
+

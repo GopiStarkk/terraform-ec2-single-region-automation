@@ -25,11 +25,26 @@ data "aws_subnet" "selected" {
     values = [var.subnet_tag]
   }
 
+  
+
   filter {
     name   = "vpc-id"
     values = [data.aws_vpc.selected.id]
   }
 }
+
+data "aws_subnet" "selected_2" {
+  filter {
+    name   = "tag:Name"
+    values = [var.subnet2_tag]
+  }
+
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.selected.id]
+  }
+}
+
 
 data "aws_security_group" "selected" {
   filter {
@@ -51,13 +66,31 @@ data "aws_kms_key" "selected" {
 # EC2 Instance
 # -----------------------
 
+resource "aws_network_interface" "secondary" {
+  subnet_id       = data.aws_subnet.selected_2.id
+  security_groups = [data.aws_security_group.selected.id]
+
+  tags = {
+    Name = "automation-secondary-eni"
+  }
+}
+
+
 resource "aws_instance" "this" {
   ami           = data.aws_ami.amazon_linux.id
   instance_type = var.instance_type
 
-  subnet_id              = data.aws_subnet.selected.id
+  # Primary subnet
+  subnet_id = data.aws_subnet.selected.id
+
   vpc_security_group_ids = [data.aws_security_group.selected.id]
   key_name               = var.keypair_name
+
+  # Secondary subnet via ENI
+  network_interface {
+    network_interface_id = aws_network_interface.secondary.id
+    device_index         = 1
+  }
 
   root_block_device {
     volume_size = 100
@@ -70,6 +103,7 @@ resource "aws_instance" "this" {
     Name = "automation-ec2"
   })
 }
+
 
 # -----------------------
 # Additional EBS Volume
