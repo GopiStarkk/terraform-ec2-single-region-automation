@@ -1,7 +1,3 @@
-# -----------------------
-# Data sources
-# -----------------------
-
 data "aws_ami" "amazon_linux" {
   most_recent = true
   owners      = ["amazon"]
@@ -12,6 +8,10 @@ data "aws_ami" "amazon_linux" {
   }
 }
 
+
+# -----------------
+# Existing VPC
+# -----------------
 data "aws_vpc" "selected" {
   filter {
     name   = "tag:Name"
@@ -19,33 +19,24 @@ data "aws_vpc" "selected" {
   }
 }
 
+# -----------------
+# Existing Subnet
+# -----------------
 data "aws_subnet" "selected" {
   filter {
     name   = "tag:Name"
     values = [var.subnet_tag]
   }
 
-  
-
   filter {
     name   = "vpc-id"
     values = [data.aws_vpc.selected.id]
   }
 }
 
-data "aws_subnet" "selected_2" {
-  filter {
-    name   = "tag:Name"
-    values = [var.subnet2_tag]
-  }
-
-  filter {
-    name   = "vpc-id"
-    values = [data.aws_vpc.selected.id]
-  }
-}
-
-
+# -----------------
+# Existing Security Group
+# -----------------
 data "aws_security_group" "selected" {
   filter {
     name   = "tag:Name"
@@ -59,70 +50,69 @@ data "aws_security_group" "selected" {
 }
 
 data "aws_kms_key" "selected" {
-  key_id = "alias/${var.kms_key_alias}"
+key_id = "alias/${var.kms_key_alias}"
 }
 
-# -----------------------
-# EC2 Instance
-# -----------------------
-
-resource "aws_network_interface" "secondary" {
-  subnet_id       = data.aws_subnet.selected_2.id
-  security_groups = [data.aws_security_group.selected.id]
-
-  tags = {
-    Name = "automation-secondary-eni"
-  }
-}
+# -----------------
+# EC2 Instances (single ENI only)
+# -----------------
 
 
 resource "aws_instance" "this" {
-  ami           = data.aws_ami.amazon_linux.id
-  instance_type = var.instance_type
+for_each = var.instances
 
-  # Primary subnet
-  subnet_id = data.aws_subnet.selected.id
 
-  vpc_security_group_ids = [data.aws_security_group.selected.id]
-  key_name               = var.keypair_name
+ami = data.aws_ami.amazon_linux.id
+instance_type = each.value.instance_type
 
-  # Secondary subnet via ENI
-  network_interface {
-    network_interface_id = aws_network_interface.secondary.id
-    device_index         = 1
-  }
 
-  root_block_device {
-    volume_size = 100
-    volume_type = "gp3"
-    encrypted   = true
-    kms_key_id  = data.aws_kms_key.selected.arn
-  }
+subnet_id = data.aws_subnet.selected.id
+vpc_security_group_ids = [data.aws_security_group.selected.id]
+key_name = var.keypair_name
 
-  tags = merge(var.tags, {
-    Name = "automation-ec2"
-  })
+
+# Root volume – 100 GB
+root_block_device {
+volume_size = 100
+volume_type = "gp3"
+encrypted = true
+kms_key_id = data.aws_kms_key.selected.arn
 }
 
 
-# -----------------------
-# Additional EBS Volume
-# -----------------------
+tags = merge(each.value.tags, {
+Name = each.key
+})
+}
+
+
+# -----------------
+# Extra EBS Volume – 150 GB
+# -----------------
+
 
 resource "aws_ebs_volume" "extra" {
-  availability_zone = aws_instance.this.availability_zone
-  size              = 100
-  type              = "gp3"
-  encrypted         = true
-  kms_key_id        = data.aws_kms_key.selected.arn
+for_each = aws_instance.this
 
-  tags = {
-    Name = "automation-extra-volume"
-  }
+
+availability_zone = each.value.availability_zone
+size = 150
+type = "gp3"
+encrypted = true
+kms_key_id = data.aws_kms_key.selected.arn
+
+
+tags = {
+Name = "${each.key}-data-volume"
+}
 }
 
+
 resource "aws_volume_attachment" "extra_attach" {
-  device_name = "/dev/xvdf"
-  volume_id   = aws_ebs_volume.extra.id
-  instance_id = aws_instance.this.id
+for_each = aws_instance.this
+
+
+device_name = "/dev/xvdf"
+volume_id = aws_ebs_volume.extra[each.key].id
+instance_id = each.value.id
 }

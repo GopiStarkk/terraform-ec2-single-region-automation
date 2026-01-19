@@ -1,22 +1,30 @@
-name: Terraform EC2 Automation (us-east-1)
+name: Terraform EC2 Automation
 
 on:
   push:
-    branches: [ main ]
+    branches: [ "main" ]
+  pull_request:
 
 jobs:
-  deploy:
+  terraform:
     runs-on: ubuntu-latest
 
-    steps:
-      - uses: actions/checkout@v3
+    defaults:
+      run:
+        working-directory: env/dev
 
-      - uses: hashicorp/setup-terraform@v2
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Init
         run: terraform init
-        working-directory: envs/dev
 
-      - name: Terraform Apply
-        run: terraform apply -auto-approve
-        working-directory: envs/dev
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        run: terraform plan

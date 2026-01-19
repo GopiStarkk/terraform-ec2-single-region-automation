@@ -1,7 +1,13 @@
-output "instance_id" {
-  value = aws_instance.this.id
+output "instance_ids" {
+  value = {
+    for k, inst in aws_instance.this :
+    k => inst.id
+  }
 }
 
-output "debug_sg_tag" {
-  value = var.sg_tag
+output "instance_private_ips" {
+  value = {
+    for k, inst in aws_instance.this :
+    k => inst.private_ip
+  }
 }
